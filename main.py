@@ -1,14 +1,50 @@
-from typing import Optional
-
-from fastapi import FastAPI
-
+from fastapi import FastAPI, Request, HTTPException
+import pickle
+import pandas as pd
+from pydantic import BaseModel
 app = FastAPI()
 
+# Загрузка модели из файла pickle
+with open('finalized_model.pkl', 'rb') as f:
+    model = pickle.load(f)
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+# Счетчик запросов
+request_count = 0
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Optional[str] = None):
-    return {"item_id": item_id, "q": q}
+# Модель для валидации входных данных
+class PredictionInput(BaseModel):
+    Pclass: int
+    Age: float
+    Fare: float
+
+@app.get("/stats")
+def stats():
+    return {"request_count": request_count}
+
+@app.get("/health")
+def health():
+    return {"status": "OK"}
+
+@app.post("/predict_model")
+def predict_model(input_data: PredictionInput):
+    global request_count
+    request_count += 1
+
+    # Создание DataFrame из данных
+    new_data = pd.DataFrame({
+        'Pclass': [input_data.Pclass],
+        'Age': [input_data.Age],
+        'Fare': [input_data.Fare]
+    })
+
+    # Предсказание
+    predictions = model.predict(new_data)
+
+    # Преобразование результата в человеко-читаемый формат
+    result = "Survived" if predictions[0] == 1 else "Not Survived"
+
+    return {"prediction": result}
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)
